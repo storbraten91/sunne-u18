@@ -155,11 +155,9 @@ header.sarg .wrap{padding-bottom:0;display:flex;align-items:center;gap:16px}
 /* ── matchkort ──────────────────────────────────────── */
 .match{
   background:var(--vit);border:1px solid #DCE7EF;
-  border-left:6px solid var(--blalinje);border-radius:var(--radie);
+  border-left:6px solid var(--kant,var(--blalinje));border-radius:var(--radie);
   padding:13px 15px;margin-bottom:10px;
 }
-.match[data-typ="Cup"]{border-left-color:var(--rodlinje)}
-.match[data-typ="A-lag"]{border-left-color:#1D1D1B}
 .match-etikett{
   font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;color:var(--skiffer);
@@ -270,15 +268,11 @@ header.sarg .wrap{padding-bottom:0;display:flex;align-items:center;gap:16px}
   gap:0 16px;
   background:var(--vit);
   border:1px solid #DCE7EF;
-  border-left:6px solid var(--blalinje);
+  border-left:6px solid var(--kant,var(--blalinje));
   border-radius:var(--radie);
   padding:14px 16px;
   margin-bottom:10px;
 }
-.pass[data-typ="Cup"]{border-left-color:var(--rodlinje)}
-.pass[data-typ="Hemmamatch"]{border-left-color:var(--blalinje)}
-.pass[data-typ="Match"]{border-left-color:var(--blalinje)}
-.pass[data-typ="A-lag"]{border-left-color:#1D1D1B}
 .pass.traff{box-shadow:0 0 0 2px var(--rodlinje)}
 
 .tid{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
@@ -425,12 +419,7 @@ footer button{margin-left:0}
     <button type="button" data-vy="matcher" aria-pressed="false">Överblick</button>
   </div>
 
-  <div class="filter" role="group" aria-label="Filtrera på typ">
-    <button class="chip" data-typ="alla" aria-pressed="true">Alla</button>
-    <button class="chip" data-typ="Cup" aria-pressed="false">Cup</button>
-    <button class="chip" data-typ="Hemmamatch" aria-pressed="false">Hemmamatch</button>
-    <button class="chip" data-typ="A-lag" aria-pressed="false">A-lag</button>
-  </div>
+  <div class="filter" id="typfilter" role="group" aria-label="Filtrera på typ" hidden></div>
 
   <div class="filter" id="lagfilter" role="group" aria-label="Filtrera på lag" hidden></div>
 
@@ -572,6 +561,7 @@ async function hamta(){
 
     PASS.sort((a,b) => a.sortering.localeCompare(b.sortering) || a.start.localeCompare(b.start));
     PASS.forEach((p, n) => { p.id = "p" + n; });
+    byggTypfilter();
     byggLagfilter();
     rita();
   }catch(err){
@@ -579,6 +569,44 @@ async function hamta(){
     notis("Schemat gick inte att hämta",
       "Kontrollera att kalkylarket är publicerat på webben som CSV och att adressen i CSV_URL är rätt.", true);
   }
+}
+
+/* Fargen pa passets kantlinje. En typ som inte star har far klubblatt bla,
+   sa en ny typ fungerar direkt - lagg bara till en rad har for egen farg. */
+const TYPFARG = {
+  "cup":        "var(--rodlinje)",
+  "nyt":        "#0E7C66",
+  "a-lag":      "#1D1D1B",
+  "alag":       "#1D1D1B",
+  "match":      "var(--blalinje)",
+  "hemmamatch": "var(--blalinje)"
+};
+function typFarg(typ){ return TYPFARG[norm(typ)] || "var(--blalinje)"; }
+
+/* Typknapparna byggs av de varden som faktiskt finns i arket, sa en ny typ
+   dyker upp av sig sjalv och en typ som tagits bort forsvinner. */
+function byggTypfilter(){
+  const rad = document.getElementById("typfilter");
+  const typer = [...new Set(PASS.map(p => p.typ).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, "sv"));
+  if(typer.length < 2){ rad.hidden = true; filterTyp = "alla"; return; }
+  rad.hidden = false;
+
+  // en vald typ som inte langre finns i datan far inte bli ett tomt filter
+  if(filterTyp !== "alla" && !typer.some(t => norm(t) === norm(filterTyp))) filterTyp = "alla";
+
+  rad.innerHTML = '<button class="chip" data-typ="alla" aria-pressed="'+
+      (filterTyp === "alla")+'">Alla</button>'+
+    typer.map(t => '<button class="chip" data-typ="'+esc(t)+'" aria-pressed="'+
+      (norm(t) === norm(filterTyp))+'">'+esc(t)+'</button>').join("");
+
+  rad.querySelectorAll(".chip").forEach(k => {
+    k.addEventListener("click", () => {
+      rad.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x === k));
+      filterTyp = k.dataset.typ;
+      rita();
+    });
+  });
 }
 
 /* Lagknappar visas bara om schemat faktiskt innehaller flera lag. */
@@ -844,7 +872,8 @@ function matchkort(grupp, fraga){
 
   const etikett = [f.typ, f.lag].filter(Boolean).join(" · ");
 
-  return '<article class="match" data-typ="'+esc(f.typ)+'">'+
+  return '<article class="match" data-typ="'+esc(f.typ)+'" '+
+    'style="--kant:'+typFarg(f.typ)+'">'+
     (etikett ? '<span class="match-etikett">'+esc(etikett)+'</span>' : '')+
     '<div class="match-topp">'+
       '<span class="match-tid">'+esc(f.start || "–")+'</span>'+
@@ -857,7 +886,8 @@ function matchkort(grupp, fraga){
 function kort(p, traff){
   const meta = [p.event, p.plats].filter(Boolean).join(" · ");
   const lank = bytesLank(p);
-  return '<article class="pass'+(traff?" traff":"")+'" data-typ="'+esc(p.typ)+'">'+
+  return '<article class="pass'+(traff?" traff":"")+'" data-typ="'+esc(p.typ)+'" '+
+    'style="--kant:'+typFarg(p.typ)+'">'+
     '<div class="tid">'+
       (p.paplats
         ? '<span class="tid-etikett">På plats</span><span class="tid-stor">'+esc(p.paplats)+'</span>'+
@@ -896,13 +926,6 @@ document.querySelectorAll(".vyval button").forEach(k => {
   k.addEventListener("click", () => {
     document.querySelectorAll(".vyval button").forEach(x => x.setAttribute("aria-pressed", x === k));
     vy = k.dataset.vy;
-    rita();
-  });
-});
-document.querySelectorAll(".chip").forEach(k => {
-  k.addEventListener("click", () => {
-    document.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x === k));
-    filterTyp = k.dataset.typ;
     rita();
   });
 });
